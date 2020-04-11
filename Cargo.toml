@@ -20,3 +20,4 @@ epochs = "*"
 diesel = { version = "*", features = ["sqlite"] }
 dotenv = "*"
 serde_urlencoded = "*"
+rgb = "*"

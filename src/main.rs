@@ -4,11 +4,11 @@ use epochs;
 use failure::{format_err, Error, Fail};
 use log::{debug, error, info};
 use reqwest::Client;
+use rgb::RGB8;
 use serde::{
     de::{self, DeserializeOwned},
     Deserialize, Deserializer, Serialize,
 };
-
 
 use std::{cell::RefCell, env, fmt::Debug, str::FromStr, time::Duration};
 use uuid::Uuid;
@@ -92,12 +92,43 @@ impl Token {
     }
 }
 
+fn de_rgb8_from_string<'de, D>(deserializer: D) -> std::result::Result<RGB8, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+
+    if s.len() == 7 {
+        if &s[0..1] == "#" {
+            let r = u8::from_str_radix(&s[1..3], 16).map_err(de::Error::custom)?;
+            let g = u8::from_str_radix(&s[3..5], 16).map_err(de::Error::custom)?;
+            let b = u8::from_str_radix(&s[5..7], 16).map_err(de::Error::custom)?;
+
+            return Ok(RGB8 { r, b, g });
+        }
+    }
+
+    return Err(serde::de::Error::custom(format!(
+        "invalid html color: {}",
+        s
+    )));
+}
+
 fn de_duration_seconds<'de, D>(deserializer: D) -> std::result::Result<Duration, D::Error>
 where
     D: Deserializer<'de>,
 {
     let seconds = u64::deserialize(deserializer)?;
     Ok(Duration::from_secs(seconds))
+}
+
+fn de_num_from_str<'de, D>(deserializer: D) -> std::result::Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    debug!("input: {}", s);
+    u64::from_str(&s).map_err(de::Error::custom)
 }
 
 fn de_bool_from_str<'de, D>(deserializer: D) -> std::result::Result<bool, D::Error>
@@ -218,7 +249,7 @@ struct Problems {
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct HoldSet {
+struct HoldSetFromProblem {
     api_id: HoldSetID,
     description: String,
     locations: Option<()>,
@@ -226,10 +257,89 @@ struct HoldSet {
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct HoldSetup {
+struct HoldSetupFromProblem {
     api_id: HoldSetupID,
     description: String,
     holdsets: Option<()>,
+}
+
+type HoldDirection = u64;
+type HoldNumber = String;
+type HoldRotation = u64;
+type HoldType = u64;
+type HoldId = u64;
+
+#[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct HoldLocation {
+    color: Option<()>,
+    description: String,
+    direction: HoldDirection,
+    direction_string: String,
+    // #[serde(deserialize_with = "de_num_from_str")]
+    hold_number: HoldNumber,
+    id: u64,
+    rotation: HoldRotation,
+    #[serde(rename = "type")]
+    ty: u64,
+    x: f64,
+    y: f64,
+    holdset: Option<()>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct Hold {
+    hold_type: HoldType,
+    holdset_description: Option<()>,
+    id: HoldId,
+    location: HoldLocation,
+    // #[serde(deserialize_with = "de_num_from_str")]
+    number: HoldNumber,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct HoldSet {
+    id: HoldSetID,
+    #[serde(deserialize_with = "de_rgb8_from_string")]
+    color: RGB8,
+    api_id: Option<HoldSetID>,
+    description: String,
+    holds: Vec<Hold>,
+}
+
+type MoonBoardConfigurationID = u64;
+
+#[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MoonBoardConfiguration {
+    description: String,
+    high_grade: BoulderGrade,
+    low_grade: BoulderGrade,
+    id: MoonBoardConfigurationID,
+}
+
+type HoldLayoutId = u64;
+
+#[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct HoldSetup {
+    id: HoldSetupID,
+    is_locked: bool,
+    setby: Option<()>,
+    api_id: Option<HoldSetupID>,
+    description: String,
+    holdsets: Vec<HoldSet>,
+    active: bool,
+    allow_climb_methods: bool,
+    date_deleted: Option<()>,
+    #[serde(deserialize_with = "de_datetime_from_rfc3339_no_tz")]
+    date_inserted: DateTime<FixedOffset>,
+    #[serde(deserialize_with = "de_datetime_from_rfc3339_no_tz")]
+    date_updated: DateTime<FixedOffset>,
+    hold_layout_id: HoldLayoutId,
+    moon_board_configurations: Vec<MoonBoardConfiguration>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -274,8 +384,8 @@ struct Problem {
     downgraded: bool,
     grade: BoulderGrade,
     has_beta_video: bool,
-    holdsets: Vec<HoldSet>,
-    holdsetup: HoldSetup,
+    holdsets: Vec<HoldSetFromProblem>,
+    holdsetup: HoldSetupFromProblem,
     is_benchmark: bool,
     is_master: bool,
     method: BoulderMethod,
@@ -337,41 +447,7 @@ enum NumberOfTries {
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "PascalCase", deny_unknown_fields)]
-struct Comment {
-    attempts: u64,
-    comment: String,
-    #[serde(deserialize_with = "de_datetime_unix_timestamp")]
-    date_climbed: DateTime<FixedOffset>,
-    #[serde(deserialize_with = "de_date_from_str")]
-    date_climbed_as_string: Date<FixedOffset>,
-    #[serde(deserialize_with = "de_datetime_from_rfc3339_no_tz_option")]
-    date_inserted: Option<DateTime<FixedOffset>>,
-    grade: Option<BoulderGrade>,
-    id: u64,
-    is_suggested_benchmark: bool,
-    moon_board: Option<()>,
-    number_of_tries: NumberOfTries,
-    problem: Option<()>,
-    rating: Option<Rating>,
-    user: UserFromComment,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "PascalCase", deny_unknown_fields)]
-struct UserFromComment {
-    can_share_data: bool,
-    city: String,
-    country: String,
-    firstname: String,
-    id: Uuid,
-    lastname: String,
-    nickname: String,
-    profile_image_url: String,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "PascalCase", deny_unknown_fields)]
-struct Repeat {
+struct RepeatOrComment {
     comment: Option<String>,
     attempts: u64,
     #[serde(deserialize_with = "de_datetime_unix_timestamp")]
@@ -387,12 +463,12 @@ struct Repeat {
     number_of_tries: NumberOfTries,
     problem: Option<()>,
     rating: Option<Rating>,
-    user: Option<UserFromRepeat>,
+    user: Option<UserFromRepeatOrComment>,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "PascalCase", deny_unknown_fields)]
-struct UserFromRepeat {
+struct UserFromRepeatOrComment {
     can_share_data: bool,
     city: Option<String>,
     country: Option<String>,
@@ -405,20 +481,43 @@ struct UserFromRepeat {
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "PascalCase", deny_unknown_fields)]
-struct Comments {
+struct Paged<T> {
     aggregate_results: Option<()>,
-    data: Vec<Comment>,
+    data: Vec<T>,
     errors: Option<()>,
     total: u64,
 }
 
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "PascalCase", deny_unknown_fields)]
-struct Repeats {
-    aggregate_results: Option<()>,
-    data: Vec<Repeat>,
-    errors: Option<()>,
-    total: u64,
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PagedQuery<'a> {
+    sort: &'a str,
+    page: u64,
+    page_size: u64,
+    group: &'a str,
+    filter: String,
+}
+
+impl<'a> PagedQuery<'a> {
+    fn comments_query(page: u64) -> PagedQuery<'a> {
+        PagedQuery {
+            sort: "",
+            page,
+            page_size: PAGE_SIZE,
+            group: "",
+            filter: "".to_string(),
+        }
+    }
+
+    fn repeats_query(page: u64, problem_id: ProblemID) -> PagedQuery<'a> {
+        PagedQuery {
+            sort: "",
+            page,
+            page_size: PAGE_SIZE,
+            group: "",
+            filter: format!("Id~eq~{}", problem_id),
+        }
+    }
 }
 
 struct MoonboardAPI {
@@ -427,52 +526,6 @@ struct MoonboardAPI {
     username: String,
     password: String,
 }
-
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct CommentsQuery<'a> {
-    sort: &'a str,
-    page: u64,
-    page_size: u64,
-    group: &'a str,
-    filter: &'a str,
-}
-
-impl<'a> CommentsQuery<'a> {
-    fn new(page: u64, page_size: u64) -> CommentsQuery<'static> {
-        CommentsQuery {
-            sort: "",
-            page,
-            page_size,
-            group: "",
-            filter: "",
-        }
-    }
-}
-
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct RepeatsQuery<'a> {
-    sort: &'a str,
-    page: u64,
-    page_size: u64,
-    group: &'a str,
-    filter: String,
-}
-
-impl<'a> RepeatsQuery<'a> {
-    fn new(page: u64, page_size: u64, problem_id: ProblemID) -> RepeatsQuery<'a> {
-        RepeatsQuery {
-            sort: "",
-            page,
-            page_size,
-            group: "",
-            filter: format!("Id~eq~{}", problem_id),
-        }
-    }
-}
-
-// sort=&page=1&pageSize=15&group=&filter=Id~eq~313683
 
 const WEBSITE_URL: &str = "https://moonboard.com";
 const API_URL: &str = "https://restapimoonboard.ems-x.com";
@@ -490,8 +543,6 @@ macro_rules! website_path {
         format!("{}/{}", WEBSITE_URL, format!($fmt, $($exprs),*))
     };
 }
-
-// TODO(robin): helper function for api urls
 
 impl MoonboardAPI {
     fn new(username: String, password: String) -> MoonboardAPI {
@@ -599,22 +650,24 @@ impl MoonboardAPI {
         Ok(parsed)
     }
 
+    // TODO(robin): this api seems to have atleast two more java timestamps as arguments,
+    // but unsure what they do
+    // (for example Holdsetup/637086364747630000/637117513200000000 )
+    async fn holdsetups(&self) -> Result<Vec<HoldSetup>> {
+        self.api_get(&api_path!("Holdsetup")).await
+    }
+
     // TODO(robin): stall detection
-    async fn all_problems(&self) -> Result<Vec<Problem>> {
+    async fn download_problem(
+        &self,
+        next_url: &dyn Fn(ProblemID) -> String,
+    ) -> Result<Vec<Problem>> {
         let mut problem_id: ProblemID = 0;
         let mut all_problems = Vec::new();
 
         loop {
             info!("downloading problems with offset: {}", problem_id);
-            let mut problems: Problems = self
-                .api_get(&api_path!("problems/v2/{}", problem_id))
-                .await?;
-
-            // {
-            //     use std::fs::write;
-
-            //     write(format!("problems_{}.json", problem_id), &problems)?;
-            // }
+            let mut problems: Problems = self.api_get(&next_url(problem_id)).await?;
 
             info!("problems left: {}", problems.total);
 
@@ -634,54 +687,39 @@ impl MoonboardAPI {
         Ok(all_problems)
     }
 
-    // TODO(robin): stall detection
+    async fn all_problems(&self) -> Result<Vec<Problem>> {
+        self.download_problem(&|id| api_path!("problems/v2/{}", id))
+            .await
+    }
+
     async fn problem_updates(
         &self,
         date_inserted: NaiveDateTime,
         date_updated: Option<NaiveDateTime>,
         date_deleted: Option<NaiveDateTime>,
     ) -> Result<Vec<Problem>> {
-        let mut problem_id: ProblemID = 0;
-        let mut all_problems = Vec::new();
-
         if date_updated.is_none() && date_deleted.is_some() {
             Err(format_err!(
                 "Got a date_deleted, but no date_updated, that is not possible"
             ))
         } else {
-            loop {
-                info!("downloading problem updates with offset: {}", problem_id);
+            let mut postfix = format!("/{}", epochs::to_windows_date(date_inserted));
 
-                let mut url = api_path!("problems/v2/{}", problem_id);
+            if let Some(date_updated) = date_updated {
+                postfix.push_str(&format!("/{}", epochs::to_windows_date(date_updated)));
 
-                url.push_str(&format!("/{}", epochs::to_windows_date(date_inserted)));
-
-                if let Some(date_updated) = date_updated {
-                    url.push_str(&format!("/{}", epochs::to_windows_date(date_updated)));
-
-                    if let Some(date_deleted) = date_deleted {
-                        url.push_str(&format!("/{}", epochs::to_windows_date(date_deleted)));
-                    }
-                }
-
-                let mut problems: Problems = self.api_get(&url).await?;
-
-                info!("problem updates left: {}", problems.total);
-
-                // TODO(robin): maybe we want a set over the id?
-                all_problems.append(&mut problems.data);
-
-                problem_id = all_problems
-                    .last()
-                    .ok_or_else(|| format_err!("Got no problems from problem_id {}", problem_id))?
-                    .api_id;
-
-                if problems.total <= 0 {
-                    break;
+                if let Some(date_deleted) = date_deleted {
+                    postfix.push_str(&format!("/{}", epochs::to_windows_date(date_deleted)));
                 }
             }
 
-            Ok(all_problems)
+            self.download_problem(&|id| {
+                let mut url = api_path!("problems/v2/{}", id);
+                url.push_str(&postfix);
+
+                url
+            })
+            .await
         }
     }
 
@@ -691,87 +729,64 @@ impl MoonboardAPI {
     }
 
     async fn all_users(&self) -> Result<Vec<User>> {
-        self.search_user("").await // TODO(robin): is the api actually that dumb and gives us everything?
+        // TODO(robin): is the api actually that dumb and gives us everything?
+        self.search_user("").await
     }
 
-    async fn problem_comments(&self, id: ProblemID) -> Result<Vec<Comment>> {
+    async fn download_paged<'a, T: DeserializeOwned>(
+        &self,
+        url: String,
+        next_query: &dyn Fn(u64) -> PagedQuery<'a>,
+    ) -> Result<Vec<T>> {
         let mut page = 1;
         let mut total = 0;
-        let mut all_comments = Vec::new();
+        let mut all_elems = Vec::new();
 
+        loop {
+            info!("downloading page {}", page);
+
+            let mut elems: Paged<T> = self.api_post_urlencoded(&url, &next_query(page)).await?;
+
+            if let Some(errors) = elems.errors {
+                error!("error while downloading page: {:?}", errors);
+            }
+
+            if let Some(aggregate_results) = elems.aggregate_results {
+                info!("aggregate_results: {:?}", aggregate_results);
+            }
+
+            total = total.max(elems.total);
+            info!("new total: {}", elems.total);
+
+            all_elems.append(&mut elems.data);
+
+            if all_elems.len() >= total as usize {
+                break;
+            } else {
+                page += 1;
+            }
+        }
+
+        Ok(all_elems)
+    }
+
+    async fn problem_comments(&self, id: ProblemID) -> Result<Vec<RepeatOrComment>> {
         info!("downloading comments of problem {}", id);
 
-        loop {
-            info!("downloading comments page {}", page);
-
-            let mut comments: Comments = self
-                .api_post_urlencoded(
-                    &website_path!("Problems/GetComments?problemId={}", id),
-                    &CommentsQuery::new(page, PAGE_SIZE),
-                )
-                .await?;
-
-            if let Some(errors) = comments.errors {
-                error!("error while downloading comments: {:?}", errors);
-            }
-
-            if let Some(aggregate_results) = comments.aggregate_results {
-                info!("aggregate_results: {:?}", aggregate_results);
-            }
-
-            total = total.max(comments.total);
-            info!("new total: {}", comments.total);
-
-            all_comments.append(&mut comments.data);
-
-            if all_comments.len() >= total as usize {
-                break;
-            } else {
-                page += 1;
-            }
-        }
-
-        Ok(all_comments)
+        self.download_paged(
+            website_path!("Problems/GetComments?problemId={}", id),
+            &PagedQuery::comments_query,
+        )
+        .await
     }
 
-    async fn problem_repeats(&self, id: ProblemID) -> Result<Vec<Repeat>> {
-        let mut page = 1;
-        let mut total = 0;
-        let mut all_repeats = Vec::new();
-
+    async fn problem_repeats(&self, id: ProblemID) -> Result<Vec<RepeatOrComment>> {
         info!("downloading repeats of problem {}", id);
 
-        loop {
-            info!("downloading repeats page {}", page);
-
-            let mut repeats: Repeats = self
-                .api_post_urlencoded(
-                    &website_path!("Problems/GetRepeats"),
-                    &RepeatsQuery::new(page, PAGE_SIZE, id),
-                )
-                .await?;
-
-            if let Some(errors) = repeats.errors {
-                error!("error while downloading comments: {:?}", errors);
-            }
-
-            if let Some(aggregate_results) = repeats.aggregate_results {
-                info!("aggregate_results: {:?}", aggregate_results);
-            }
-
-            total = total.max(repeats.total);
-            info!("new total: {}", repeats.total);
-
-            all_repeats.append(&mut repeats.data);
-
-            if all_repeats.len() >= total as usize {
-                break;
-            } else {
-                page += 1;
-            }
-        }
-
-        Ok(all_repeats)
+        self.download_paged(website_path!("Problems/GetRepeats"), &|page| {
+            PagedQuery::repeats_query(page, id)
+        })
+        .await
     }
 }
 
@@ -782,31 +797,32 @@ async fn main() -> Result<()> {
         .init();
 
     let api = MoonboardAPI::new(env::var("MB_USER")?, env::var("MB_PASS")?);
+    println!("holdsetups {:#?}", api.holdsetups().await?);
 
-    // println!(
-    //     "updates: {:?}",
-    //     api.problem_updates(
-    //         DateTime::parse_from_rfc3339("2020-04-01T00:00:00-00:00")?.naive_utc(),
-    //         Some(DateTime::parse_from_rfc3339("2020-04-01T00:00:00-00:00")?.naive_utc()),
-    //         Some(DateTime::parse_from_rfc3339("2020-04-01T00:00:00-00:00")?.naive_utc())
-    //     )
-    //     .await?
-    //     .len()
-    // );
+    println!("all_problems: {:?}", api.all_problems().await?.len());
 
-    // println!("search tim: {:?}", api.search_user("spengler").await?);
-    // println!("problem comments: {:?}", api.problem_comments(20153).await?.len());
+    println!(
+        "updates: {:?}",
+        api.problem_updates(
+            DateTime::parse_from_rfc3339("2020-04-01T00:00:00-00:00")?.naive_utc(),
+            Some(DateTime::parse_from_rfc3339("2020-04-01T00:00:00-00:00")?.naive_utc()),
+            Some(DateTime::parse_from_rfc3339("2020-04-01T00:00:00-00:00")?.naive_utc())
+        )
+        .await?
+        .len()
+    );
 
-    // TODO(robin): make a Paged<T> struct and unify repeats and comments
+    println!("search username: {:?}", api.search_user("username").await?);
+
+    println!(
+        "problem comments: {:?}",
+        api.problem_comments(20153).await?.len()
+    );
+
     println!(
         "problem repeats: {:?}",
         api.problem_repeats(20153).await?.len()
-    ); // ?.len());
-
-    // println!("{}", serde_urlencoded::to_string(&CommentsQuery::new(1, 50))?);
-
-    // let users_json = std::fs::read_to_string("users_beautiful.json")?;
-    // let users: Vec<User> = serde_json::from_str(&users_json)?;
+    );
 
     Ok(())
 }
