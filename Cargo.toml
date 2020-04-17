@@ -17,7 +17,13 @@ uuid = { version = "*", features = ["serde"] }
 env_logger = "*"
 log = "*"
 epochs = "*"
-diesel = { version = "*", features = ["sqlite"] }
 dotenv = "*"
 serde_urlencoded = "*"
 rgb = "*"
+bincode = "*"
+
+
+# tmp
+glob = "*"
+sqlx = { version = "*", default-features= false, features = [ "runtime-tokio", "macros", "sqlite", "chrono"] }
+sqlx-helper = { version = "*", path = "sqlx-helper" }

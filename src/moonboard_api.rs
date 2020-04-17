@@ -1,5 +1,4 @@
 use chrono::{Date, DateTime, FixedOffset, NaiveDate, NaiveDateTime};
-use env_logger::{Builder, Env};
 use epochs;
 use failure::{format_err, Error, Fail};
 use log::{debug, error, info};
@@ -10,7 +9,7 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 
-use std::{cell::RefCell, env, fmt::Debug, str::FromStr, time::Duration};
+use std::{cell::RefCell, fmt::Debug, str::FromStr, time::Duration};
 use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, Error>;
@@ -122,13 +121,13 @@ where
     Ok(Duration::from_secs(seconds))
 }
 
-fn de_num_from_str<'de, D>(deserializer: D) -> std::result::Result<u64, D::Error>
+fn de_num_from_str<'de, D>(deserializer: D) -> std::result::Result<i64, D::Error>
 where
     D: Deserializer<'de>,
 {
     let s = String::deserialize(deserializer)?;
     debug!("input: {}", s);
-    u64::from_str(&s).map_err(de::Error::custom)
+    i64::from_str(&s).map_err(de::Error::custom)
 }
 
 fn de_bool_from_str<'de, D>(deserializer: D) -> std::result::Result<bool, D::Error>
@@ -242,32 +241,42 @@ where
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
-struct Problems {
-    total: u64,
-    data: Vec<Problem>,
+pub struct Problems {
+    total: i64,
+    pub data: Vec<Problem>,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct HoldSetFromProblem {
-    api_id: HoldSetID,
-    description: String,
-    locations: Option<()>,
+pub struct HoldSetFromProblem {
+    pub api_id: HoldSetID,
+    pub description: String,
+    pub locations: Option<()>,
+}
+
+#[sqlx_helper::insertable(table_name = "holdsets_for_problems")]
+#[derive(Debug)]
+pub struct HoldSetFromProblemWithID {
+    pub problem_id: ProblemID,
+    pub api_id: HoldSetID,
+    pub description: String,
+    #[sqlx_helper::insert(skip)]
+    pub locations: Option<()>,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct HoldSetupFromProblem {
-    api_id: HoldSetupID,
+pub struct HoldSetupFromProblem {
+    pub api_id: HoldSetupID,
     description: String,
     holdsets: Option<()>,
 }
 
-type HoldDirection = u64;
+type HoldDirection = i64;
 type HoldNumber = String;
-type HoldRotation = u64;
-type HoldType = u64;
-type HoldId = u64;
+type HoldRotation = i64;
+type HoldType = i64;
+type HoldId = i64;
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -278,10 +287,10 @@ struct HoldLocation {
     direction_string: String,
     // #[serde(deserialize_with = "de_num_from_str")]
     hold_number: HoldNumber,
-    id: u64,
+    id: i64,
     rotation: HoldRotation,
     #[serde(rename = "type")]
-    ty: u64,
+    ty: i64,
     x: f64,
     y: f64,
     holdset: Option<()>,
@@ -309,7 +318,7 @@ struct HoldSet {
     holds: Vec<Hold>,
 }
 
-type MoonBoardConfigurationID = u64;
+type MoonBoardConfigurationID = i64;
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -320,11 +329,11 @@ struct MoonBoardConfiguration {
     id: MoonBoardConfigurationID,
 }
 
-type HoldLayoutId = u64;
+type HoldLayoutId = i64;
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct HoldSetup {
+pub struct HoldSetup {
     id: HoldSetupID,
     is_locked: bool,
     setby: Option<()>,
@@ -342,62 +351,111 @@ struct HoldSetup {
     moon_board_configurations: Vec<MoonBoardConfiguration>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, sqlx::Type)]
 #[serde(deny_unknown_fields)]
-enum BoulderMethod {
+pub enum BoulderMethod {
     #[serde(rename = "Feet follow hands")]
+    #[sqlx(rename = "feet_follow_hands")]
     FeetFollowHands,
     #[serde(rename = "Screw ons only")]
+    #[sqlx(rename = "screw_ons_only")]
     ScrewOnsOnly,
     #[serde(rename = "Feet follow hands + screw ons")]
+    #[sqlx(rename = "feet_follow_hands_and_screw_ons")]
     FeetFollowHandsAndScrewOns,
     #[serde(rename = "Footless + kickboard")]
+    #[sqlx(rename = "footless_and_kick_board")]
     FootlessAndKickBoard,
 }
 
+#[sqlx_helper::insertable(table_name = "moves")]
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct Move {
-    description: MoveCoordinate,
-    is_end: bool,
-    is_start: bool,
-    problem_id: ProblemID,
+pub struct Move {
+    pub description: MoveCoordinate,
+    pub is_end: bool,
+    pub is_start: bool,
+    pub problem_id: ProblemID,
 }
 
-type BoulderGrade = String;
-type Rating = u64;
-type MoveCoordinate = String;
-type ProblemID = u64;
-type HoldSetID = u64;
-type HoldSetupID = u64;
+pub type BoulderGrade = String;
+pub type Rating = i64;
+pub type MoveCoordinate = String;
+pub type ProblemID = i64;
+pub type HoldSetID = i64;
+pub type HoldSetupID = i64;
 
+pub fn option_date_to_string(d: Option<DateTime<FixedOffset>>) -> Option<String> {
+    d.map(|d| d.to_string())
+}
+
+pub fn date_to_string(d: DateTime<FixedOffset>) -> String {
+    d.to_string()
+}
+
+pub fn setup_id_from_hold_setup(setup: HoldSetupFromProblem) -> HoldSetupID {
+    setup.api_id
+}
+
+pub fn uuid_to_string(uuid: Uuid) -> String {
+    uuid.to_string()
+}
+
+pub fn holdset_add_problemid(
+    problem: &Problem,
+    hold_set: &HoldSetFromProblem,
+) -> HoldSetFromProblemWithID {
+    let api_id = hold_set.api_id;
+    let description = hold_set.description.clone();
+    let locations = hold_set.locations;
+    let problem_id = problem.api_id;
+
+    HoldSetFromProblemWithID {
+        problem_id,
+        api_id,
+        description,
+        locations,
+    }
+}
+
+#[sqlx_helper::insertable(table_name = "problems")]
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct Problem {
-    api_id: ProblemID,
+pub struct Problem {
+    pub api_id: ProblemID,
+    #[sqlx_helper::insert(with = "option_date_to_string")]
     #[serde(deserialize_with = "de_datetime_from_rfc3339_no_tz_option")]
-    date_deleted: Option<DateTime<FixedOffset>>,
+    pub date_deleted: Option<DateTime<FixedOffset>>,
+    #[sqlx_helper::insert(with = "date_to_string")]
     #[serde(deserialize_with = "de_datetime_from_rfc3339_no_tz")]
-    date_inserted: DateTime<FixedOffset>,
+    pub date_inserted: DateTime<FixedOffset>,
+    #[sqlx_helper::insert(with = "option_date_to_string")]
     #[serde(deserialize_with = "de_datetime_from_rfc3339_no_tz_option")]
-    date_updated: Option<DateTime<FixedOffset>>,
-    downgraded: bool,
-    grade: BoulderGrade,
-    has_beta_video: bool,
-    holdsets: Vec<HoldSetFromProblem>,
-    holdsetup: HoldSetupFromProblem,
-    is_benchmark: bool,
-    is_master: bool,
-    method: BoulderMethod,
-    moon_board_configuration_id: u64,
-    moves: Vec<Move>,
-    name: String,
-    repeats: u64,
-    setby: String,
-    setby_id: Uuid,
-    upgraded: bool,
-    user_grade: Option<BoulderGrade>,
-    user_rating: Option<Rating>,
+    pub date_updated: Option<DateTime<FixedOffset>>,
+    pub downgraded: bool,
+    pub grade: BoulderGrade,
+    pub has_beta_video: bool,
+    #[sqlx_helper::insert(
+        embed_with = "holdsets_for_problems",
+        embed_translator = "holdset_add_problemid"
+    )]
+    pub holdsets: Vec<HoldSetFromProblem>,
+    #[sqlx_helper::insert(with = "setup_id_from_hold_setup")]
+    pub holdsetup: HoldSetupFromProblem,
+    pub is_benchmark: bool,
+    pub is_master: bool,
+    pub method: BoulderMethod,
+    pub moon_board_configuration_id: i64,
+    #[sqlx_helper::insert(embed_with = "moves")]
+    pub moves: Vec<Move>,
+    pub name: String,
+    pub repeats: i64,
+    pub setby: String,
+    #[sqlx_helper::insert(with = "uuid_to_string")]
+    pub setby_id: Uuid,
+    pub upgraded: bool,
+    pub user_grade: Option<BoulderGrade>,
+    pub user_rating: Option<Rating>,
 }
 
 #[derive(Serialize, Debug)]
@@ -413,11 +471,11 @@ struct UserSearch<'a> {
 //     Status0
 // }
 
-type UserStatus = u64;
+type UserStatus = i64;
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct User {
+pub struct User {
     action_by_moon_id: Option<()>,
     #[serde(deserialize_with = "de_datetime_from_rfc3339_no_tz_option")]
     date_deleted: Option<DateTime<FixedOffset>>,
@@ -447,9 +505,9 @@ enum NumberOfTries {
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "PascalCase", deny_unknown_fields)]
-struct RepeatOrComment {
+pub struct RepeatOrComment {
     comment: Option<String>,
-    attempts: u64,
+    attempts: i64,
     #[serde(deserialize_with = "de_datetime_unix_timestamp")]
     date_climbed: DateTime<FixedOffset>,
     #[serde(deserialize_with = "de_date_from_str")]
@@ -457,7 +515,7 @@ struct RepeatOrComment {
     #[serde(deserialize_with = "de_datetime_from_rfc3339_no_tz_option")]
     date_inserted: Option<DateTime<FixedOffset>>,
     grade: Option<BoulderGrade>,
-    id: u64,
+    id: i64,
     is_suggested_benchmark: bool,
     moon_board: Option<()>,
     number_of_tries: NumberOfTries,
@@ -485,21 +543,21 @@ struct Paged<T> {
     aggregate_results: Option<()>,
     data: Vec<T>,
     errors: Option<()>,
-    total: u64,
+    total: i64,
 }
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PagedQuery<'a> {
     sort: &'a str,
-    page: u64,
-    page_size: u64,
+    page: i64,
+    page_size: i64,
     group: &'a str,
     filter: String,
 }
 
 impl<'a> PagedQuery<'a> {
-    fn comments_query(page: u64) -> PagedQuery<'a> {
+    fn comments_query(page: i64) -> PagedQuery<'a> {
         PagedQuery {
             sort: "",
             page,
@@ -509,7 +567,7 @@ impl<'a> PagedQuery<'a> {
         }
     }
 
-    fn repeats_query(page: u64, problem_id: ProblemID) -> PagedQuery<'a> {
+    fn repeats_query(page: i64, problem_id: ProblemID) -> PagedQuery<'a> {
         PagedQuery {
             sort: "",
             page,
@@ -520,7 +578,7 @@ impl<'a> PagedQuery<'a> {
     }
 }
 
-struct MoonboardAPI {
+pub struct MoonboardAPI {
     token: RefCell<Option<Token>>,
     client: Client,
     username: String,
@@ -530,7 +588,7 @@ struct MoonboardAPI {
 const WEBSITE_URL: &str = "https://moonboard.com";
 const API_URL: &str = "https://restapimoonboard.ems-x.com";
 const API_PATH: &str = "v1/_moonapi";
-const PAGE_SIZE: u64 = 1000; // TODO(robin): seems to work for now
+const PAGE_SIZE: i64 = 1000; // TODO(robin): seems to work for now
 
 macro_rules! api_path {
     ($fmt: expr $(, $exprs:expr)*) => {
@@ -545,7 +603,7 @@ macro_rules! website_path {
 }
 
 impl MoonboardAPI {
-    fn new(username: String, password: String) -> MoonboardAPI {
+    pub fn new(username: String, password: String) -> MoonboardAPI {
         MoonboardAPI {
             token: RefCell::new(None),
             client: Client::new(),
@@ -653,7 +711,7 @@ impl MoonboardAPI {
     // TODO(robin): this api seems to have atleast two more java timestamps as arguments,
     // but unsure what they do
     // (for example Holdsetup/637086364747630000/637117513200000000 )
-    async fn holdsetups(&self) -> Result<Vec<HoldSetup>> {
+    pub async fn holdsetups(&self) -> Result<Vec<HoldSetup>> {
         self.api_get(&api_path!("Holdsetup")).await
     }
 
@@ -687,12 +745,12 @@ impl MoonboardAPI {
         Ok(all_problems)
     }
 
-    async fn all_problems(&self) -> Result<Vec<Problem>> {
+    pub async fn all_problems(&self) -> Result<Vec<Problem>> {
         self.download_problem(&|id| api_path!("problems/v2/{}", id))
             .await
     }
 
-    async fn problem_updates(
+    pub async fn problem_updates(
         &self,
         date_inserted: NaiveDateTime,
         date_updated: Option<NaiveDateTime>,
@@ -723,12 +781,12 @@ impl MoonboardAPI {
         }
     }
 
-    async fn search_user(&self, pattern: &str) -> Result<Vec<User>> {
+    pub async fn search_user(&self, pattern: &str) -> Result<Vec<User>> {
         self.api_post_json(&api_path!("Users/Search"), &UserSearch { name: pattern })
             .await
     }
 
-    async fn all_users(&self) -> Result<Vec<User>> {
+    pub async fn all_users(&self) -> Result<Vec<User>> {
         // TODO(robin): is the api actually that dumb and gives us everything?
         self.search_user("").await
     }
@@ -736,7 +794,7 @@ impl MoonboardAPI {
     async fn download_paged<'a, T: DeserializeOwned>(
         &self,
         url: String,
-        next_query: &dyn Fn(u64) -> PagedQuery<'a>,
+        next_query: &dyn Fn(i64) -> PagedQuery<'a>,
     ) -> Result<Vec<T>> {
         let mut page = 1;
         let mut total = 0;
@@ -770,7 +828,7 @@ impl MoonboardAPI {
         Ok(all_elems)
     }
 
-    async fn problem_comments(&self, id: ProblemID) -> Result<Vec<RepeatOrComment>> {
+    pub async fn problem_comments(&self, id: ProblemID) -> Result<Vec<RepeatOrComment>> {
         info!("downloading comments of problem {}", id);
 
         self.download_paged(
@@ -780,7 +838,7 @@ impl MoonboardAPI {
         .await
     }
 
-    async fn problem_repeats(&self, id: ProblemID) -> Result<Vec<RepeatOrComment>> {
+    pub async fn problem_repeats(&self, id: ProblemID) -> Result<Vec<RepeatOrComment>> {
         info!("downloading repeats of problem {}", id);
 
         self.download_paged(website_path!("Problems/GetRepeats"), &|page| {
@@ -788,41 +846,4 @@ impl MoonboardAPI {
         })
         .await
     }
-}
-
-#[tokio::main]
-async fn main() -> Result<()> {
-    Builder::from_env(Env::default().default_filter_or("info"))
-        .format_indent(Some(4))
-        .init();
-
-    let api = MoonboardAPI::new(env::var("MB_USER")?, env::var("MB_PASS")?);
-    println!("holdsetups {:#?}", api.holdsetups().await?);
-
-    println!("all_problems: {:?}", api.all_problems().await?.len());
-
-    println!(
-        "updates: {:?}",
-        api.problem_updates(
-            DateTime::parse_from_rfc3339("2020-04-01T00:00:00-00:00")?.naive_utc(),
-            Some(DateTime::parse_from_rfc3339("2020-04-01T00:00:00-00:00")?.naive_utc()),
-            Some(DateTime::parse_from_rfc3339("2020-04-01T00:00:00-00:00")?.naive_utc())
-        )
-        .await?
-        .len()
-    );
-
-    println!("search username: {:?}", api.search_user("username").await?);
-
-    println!(
-        "problem comments: {:?}",
-        api.problem_comments(20153).await?.len()
-    );
-
-    println!(
-        "problem repeats: {:?}",
-        api.problem_repeats(20153).await?.len()
-    );
-
-    Ok(())
 }
