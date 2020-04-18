@@ -1,17 +1,15 @@
-use moonboard_api::User;
+// use moonboard_api::moonboard_api::MoonboardAPI;
+
+use moonboard::Moonboard;
 
 use chrono::{DateTime, Utc};
 use env_logger::{Builder, Env};
 use failure::Error;
+use std::env;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct UserDB {
-    last_update: DateTime<Utc>,
-    users: Vec<User>,
-}
+// TODO(robin): add creation of bootstrap db binary
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -19,7 +17,20 @@ async fn main() -> Result<(), Error> {
         .format_indent(Some(4))
         .init();
 
-    let _create_sql = include_str!("schema.sql");
+    let mut board = Moonboard::new(env::var("MB_USER")?, env::var("MB_PASS")?, ".".to_owned()).await?;
+
+    for i in 0..256 {
+        println!("{:#?}", board.search_problems("r".to_owned()).await?.len());
+    }
+    /*
+    println!("{:#?}", board.search_problems("r".to_owned()).await?.len());
+    println!("{:#?}", board.search_problems("r".to_owned()).await?.len());
+    println!("{:#?}", board.search_problems("r".to_owned()).await?.len());
+    println!("{:#?}", board.search_problems("r".to_owned()).await?.len());
+    */
+
+
+    // let _create_sql = include_str!("schema.sql");
     // let mut conn = SqliteConnection::connect("sqlite://test6.db").await?;
 
     /*
@@ -48,10 +59,11 @@ async fn main() -> Result<(), Error> {
     // let users: Vec<User> = serde_json::from_str(&std::fs::read_to_string("users_beautiful.json")?)?;
 
     // let user_db = UserDB { last_update: Utc::now(), users };
-    let user_db: UserDB = bincode::deserialize(&std::fs::read("users.db")?)?;
-    println!("{}", user_db.users.len());
-    let encoded = bincode::serialize(&user_db)?;
-    std::fs::write("users.db", encoded)?;
+
+    // let user_db: UserDB = bincode::deserialize(&std::fs::read("users.db")?)?;
+    // println!("{}", user_db.users.len());
+    // let encoded = bincode::serialize(&user_db)?;
+    // std::fs::write("users.db", encoded)?;
 
     // println!("users {:#?}", users);
 

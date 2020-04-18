@@ -3,6 +3,7 @@ name = "moonboard_api"
 version = "0.1.0"
 authors = ["Robin Ole Heinemann <robin.ole.heinemann@t-online.de>"]
 edition = "2018"
+build = "build.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -11,7 +12,7 @@ serde = { version = "*", features = ["derive"] }
 serde_json = "*"
 reqwest = { version = "*", features = ["json", "gzip"] }
 failure = "*"
-tokio = { version = "*", features = ["macros"] }
+tokio = { version = "*", features = ["macros", "rt-threaded"] }
 chrono = { version = "*", features = ["serde"] }
 uuid = { version = "*", features = ["serde"] }
 env_logger = "*"
@@ -22,8 +23,24 @@ serde_urlencoded = "*"
 rgb = "*"
 bincode = "*"
 
+openssl = { version = "*", features = ["vendored"] }
 
 # tmp
 glob = "*"
-sqlx = { version = "*", default-features= false, features = [ "runtime-tokio", "macros", "sqlite", "chrono"] }
+sqlx = { version = "*", default-features= false, features = [ "runtime-tokio", "macros", "sqlite", "chrono"], git = "https://github.com/launchbadge/sqlx" }
 sqlx-helper = { version = "*", path = "sqlx-helper" }
+android_logger = "*"
+log-panics = "*"
+jni-sys = "*"
+futures-util = "*"
+
+[profile.release]
+lto = true
+
+[build-dependencies]
+rust_swig = "*"
+env_logger = "*"
+
+[lib]
+name = "moonboard"
+crate-type = ["cdylib", "rlib"]

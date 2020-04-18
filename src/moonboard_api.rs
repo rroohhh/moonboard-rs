@@ -121,13 +121,13 @@ where
     Ok(Duration::from_secs(seconds))
 }
 
-fn de_num_from_str<'de, D>(deserializer: D) -> std::result::Result<i64, D::Error>
+fn de_num_from_str<'de, D>(deserializer: D) -> std::result::Result<i32, D::Error>
 where
     D: Deserializer<'de>,
 {
     let s = String::deserialize(deserializer)?;
     debug!("input: {}", s);
-    i64::from_str(&s).map_err(de::Error::custom)
+    i32::from_str(&s).map_err(de::Error::custom)
 }
 
 fn de_bool_from_str<'de, D>(deserializer: D) -> std::result::Result<bool, D::Error>
@@ -242,7 +242,7 @@ where
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Problems {
-    total: i64,
+    total: i32,
     pub data: Vec<Problem>,
 }
 
@@ -272,11 +272,11 @@ pub struct HoldSetupFromProblem {
     holdsets: Option<()>,
 }
 
-type HoldDirection = i64;
+type HoldDirection = i32;
 type HoldNumber = String;
-type HoldRotation = i64;
-type HoldType = i64;
-type HoldId = i64;
+type HoldRotation = i32;
+type HoldType = i32;
+type HoldId = i32;
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -287,10 +287,10 @@ struct HoldLocation {
     direction_string: String,
     // #[serde(deserialize_with = "de_num_from_str")]
     hold_number: HoldNumber,
-    id: i64,
+    id: i32,
     rotation: HoldRotation,
     #[serde(rename = "type")]
-    ty: i64,
+    ty: i32,
     x: f64,
     y: f64,
     holdset: Option<()>,
@@ -318,7 +318,7 @@ struct HoldSet {
     holds: Vec<Hold>,
 }
 
-type MoonBoardConfigurationID = i64;
+type MoonBoardConfigurationID = i32;
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -329,7 +329,7 @@ struct MoonBoardConfiguration {
     id: MoonBoardConfigurationID,
 }
 
-type HoldLayoutId = i64;
+type HoldLayoutId = i32;
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -379,11 +379,11 @@ pub struct Move {
 }
 
 pub type BoulderGrade = String;
-pub type Rating = i64;
+pub type Rating = i32;
 pub type MoveCoordinate = String;
-pub type ProblemID = i64;
-pub type HoldSetID = i64;
-pub type HoldSetupID = i64;
+pub type ProblemID = i32;
+pub type HoldSetID = i32;
+pub type HoldSetupID = i32;
 
 pub fn option_date_to_string(d: Option<DateTime<FixedOffset>>) -> Option<String> {
     d.map(|d| d.to_string())
@@ -445,11 +445,11 @@ pub struct Problem {
     pub is_benchmark: bool,
     pub is_master: bool,
     pub method: BoulderMethod,
-    pub moon_board_configuration_id: i64,
+    pub moon_board_configuration_id: i32,
     #[sqlx_helper::insert(embed_with = "moves")]
     pub moves: Vec<Move>,
     pub name: String,
-    pub repeats: i64,
+    pub repeats: i32,
     pub setby: String,
     #[sqlx_helper::insert(with = "uuid_to_string")]
     pub setby_id: Uuid,
@@ -471,7 +471,7 @@ struct UserSearch<'a> {
 //     Status0
 // }
 
-type UserStatus = i64;
+type UserStatus = i32;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -507,7 +507,7 @@ enum NumberOfTries {
 #[serde(rename_all = "PascalCase", deny_unknown_fields)]
 pub struct RepeatOrComment {
     comment: Option<String>,
-    attempts: i64,
+    attempts: i32,
     #[serde(deserialize_with = "de_datetime_unix_timestamp")]
     date_climbed: DateTime<FixedOffset>,
     #[serde(deserialize_with = "de_date_from_str")]
@@ -515,7 +515,7 @@ pub struct RepeatOrComment {
     #[serde(deserialize_with = "de_datetime_from_rfc3339_no_tz_option")]
     date_inserted: Option<DateTime<FixedOffset>>,
     grade: Option<BoulderGrade>,
-    id: i64,
+    id: i32,
     is_suggested_benchmark: bool,
     moon_board: Option<()>,
     number_of_tries: NumberOfTries,
@@ -543,21 +543,21 @@ struct Paged<T> {
     aggregate_results: Option<()>,
     data: Vec<T>,
     errors: Option<()>,
-    total: i64,
+    total: i32,
 }
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PagedQuery<'a> {
     sort: &'a str,
-    page: i64,
-    page_size: i64,
+    page: i32,
+    page_size: i32,
     group: &'a str,
     filter: String,
 }
 
 impl<'a> PagedQuery<'a> {
-    fn comments_query(page: i64) -> PagedQuery<'a> {
+    fn comments_query(page: i32) -> PagedQuery<'a> {
         PagedQuery {
             sort: "",
             page,
@@ -567,7 +567,7 @@ impl<'a> PagedQuery<'a> {
         }
     }
 
-    fn repeats_query(page: i64, problem_id: ProblemID) -> PagedQuery<'a> {
+    fn repeats_query(page: i32, problem_id: ProblemID) -> PagedQuery<'a> {
         PagedQuery {
             sort: "",
             page,
@@ -588,7 +588,7 @@ pub struct MoonboardAPI {
 const WEBSITE_URL: &str = "https://moonboard.com";
 const API_URL: &str = "https://restapimoonboard.ems-x.com";
 const API_PATH: &str = "v1/_moonapi";
-const PAGE_SIZE: i64 = 1000; // TODO(robin): seems to work for now
+const PAGE_SIZE: i32 = 1000; // TODO(robin): seems to work for now
 
 macro_rules! api_path {
     ($fmt: expr $(, $exprs:expr)*) => {
@@ -794,7 +794,7 @@ impl MoonboardAPI {
     async fn download_paged<'a, T: DeserializeOwned>(
         &self,
         url: String,
-        next_query: &dyn Fn(i64) -> PagedQuery<'a>,
+        next_query: &dyn Fn(i32) -> PagedQuery<'a>,
     ) -> Result<Vec<T>> {
         let mut page = 1;
         let mut total = 0;
